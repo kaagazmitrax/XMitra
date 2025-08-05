@@ -1,8 +1,5 @@
-// Forcing a deployment refresh
-import React, { useState, useEffect } from 'react';
-// ... the rest of your App.js code
 // ========================================================================
-// FILE: src/App.js (Updated for Client Dashboard)
+// FILE: src/App.js (Corrected Version)
 // ========================================================================
 import React, { useState, useEffect } from 'react';
 import { auth } from './firebase';
@@ -12,7 +9,7 @@ import {
   onAuthStateChanged,
   signOut 
 } from "firebase/auth";
-import ClientDashboard from './components/ClientDashboard'; // IMPORT THE NEW DASHBOARD
+import ClientDashboard from './components/ClientDashboard';
 
 function App() {
   const [isLoginView, setIsLoginView] = useState(true);
@@ -59,12 +56,10 @@ function App() {
     );
   }
 
-  // THIS IS THE MAIN CHANGE! We now render ClientDashboard.
   if (user) {
     return <ClientDashboard user={user} handleLogout={handleLogout} />;
   }
 
-  // Login/Signup form remains the same
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
       <div className="w-full max-w-md bg-white rounded-lg shadow-md p-8">
