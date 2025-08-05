@@ -14,7 +14,6 @@ function Gstr1Filing({ clientId, clientGstin }) {
   // State for the sales data
   const [allInvoices, setAllInvoices] = useState([]);
   const [processedData, setProcessedData] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   // Fetch all invoices for the client once
   useEffect(() => {
@@ -29,7 +28,6 @@ function Gstr1Filing({ clientId, clientGstin }) {
           invoices.push({ id: doc.id, ...doc.data() });
         });
         setAllInvoices(invoices);
-        setLoading(false);
       });
 
       return () => unsubscribe();

@@ -1,30 +1,23 @@
 // ========================================================================
 // FILE: src/components/Gstr3bFiling.js (With Advanced GSTR-2B Auto-fill)
 // ========================================================================
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { db, auth } from '../firebase';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 
 function Gstr3bFiling({ clientId, clientGstin }) {
-  // State for the filing period
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
-
-  // State for processed JSON
   const [processedJson, setProcessedJson] = useState(null);
   const [loading, setLoading] = useState(false);
-
-  // NEW: State for GSTR-2B processing
   const [supplierItcData, setSupplierItcData] = useState([]);
   const [uploadMessage, setUploadMessage] = useState('');
   const [isProcessingFile, setIsProcessingFile] = useState(false);
 
-  // NEW: Calculate total claimed ITC whenever the supplier data changes
   const totalClaimedItc = supplierItcData
     .filter(supplier => supplier.isClaimed)
     .reduce((acc, supplier) => acc + supplier.totalItc, 0);
 
-  // Function to handle GSTR-2B Excel file upload
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -40,51 +33,50 @@ function Gstr3bFiling({ clientId, clientGstin }) {
         const workbook = window.XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames.find(name => name.toLowerCase().includes('b2b'));
         if (!sheetName) throw new Error("Could not find a 'B2B' sheet in the Excel file.");
-        
+
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = window.XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
         let headerRowIndex = -1;
         let gstinCol = -1, nameCol = -1, igstCol = -1, cgstCol = -1, sgstCol = -1;
 
-        // UPDATED: More robust header detection logic
         for (let i = 0; i < jsonData.length; i++) {
-            const row = jsonData[i].map(cell => (typeof cell === 'string' ? cell.toLowerCase() : cell));
-            if (row.some(cell => typeof cell === 'string' && (cell.includes('gstin') && cell.includes('supplier')))) {
-                headerRowIndex = i;
-                gstinCol = row.findIndex(cell => typeof cell === 'string' && cell.includes('gstin') && cell.includes('supplier'));
-                nameCol = row.findIndex(cell => typeof cell === 'string' && (cell.includes('trade') || cell.includes('name')));
-                igstCol = row.findIndex(cell => typeof cell === 'string' && (cell.includes('integrated') || cell.includes('igst')));
-                cgstCol = row.findIndex(cell => typeof cell === 'string' && (cell.includes('central') || cell.includes('cgst')));
-                sgstCol = row.findIndex(cell => typeof cell === 'string' && (cell.includes('state/ut') || cell.includes('sgst')));
-                break;
-            }
+          const row = jsonData[i].map(cell => (typeof cell === 'string' ? cell.toLowerCase() : cell));
+          if (row.some(cell => typeof cell === 'string' && (cell.includes('gstin') && cell.includes('supplier')))) {
+            headerRowIndex = i;
+            gstinCol = row.findIndex(cell => typeof cell === 'string' && cell.includes('gstin') && cell.includes('supplier'));
+            nameCol = row.findIndex(cell => typeof cell === 'string' && (cell.includes('trade') || cell.includes('name')));
+            igstCol = row.findIndex(cell => typeof cell === 'string' && (cell.includes('integrated') || cell.includes('igst')));
+            cgstCol = row.findIndex(cell => typeof cell === 'string' && (cell.includes('central') || cell.includes('cgst')));
+            sgstCol = row.findIndex(cell => typeof cell === 'string' && (cell.includes('state/ut') || cell.includes('sgst')));
+            break;
+          }
         }
 
-        if (headerRowIndex === -1) throw new Error("Could not find required columns (like 'GSTIN of Supplier') in the B2B sheet.");
+        if (headerRowIndex === -1) throw new Error("Could not find required columns in the B2B sheet.");
 
         const itcBySupplier = {};
         for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
-            const row = jsonData[i];
-            const gstin = row[gstinCol];
-            if (gstin && String(gstin).length === 15) {
-                if (!itcBySupplier[gstin]) {
-                    itcBySupplier[gstin] = { name: row[nameCol] || 'N/A', iamt: 0, camt: 0, samt: 0 };
-                }
-                if (typeof row[igstCol] === 'number') itcBySupplier[gstin].iamt += row[igstCol];
-                if (typeof row[cgstCol] === 'number') itcBySupplier[gstin].camt += row[cgstCol];
-                if (typeof row[sgstCol] === 'number') itcBySupplier[gstin].samt += row[sgstCol];
+          const row = jsonData[i];
+          const gstin = row[gstinCol];
+          if (gstin && gstin.length === 15) {
+            if (!itcBySupplier[gstin]) {
+              itcBySupplier[gstin] = { name: row[nameCol] || 'N/A', iamt: 0, camt: 0, samt: 0 };
             }
+            if (typeof row[igstCol] === 'number') itcBySupplier[gstin].iamt += row[igstCol];
+            if (typeof row[cgstCol] === 'number') itcBySupplier[gstin].camt += row[cgstCol];
+            if (typeof row[sgstCol] === 'number') itcBySupplier[gstin].samt += row[sgstCol];
+          }
         }
-        
+
         const processedList = Object.keys(itcBySupplier).map(gstin => ({
-            gstin,
-            name: itcBySupplier[gstin].name,
-            iamt: itcBySupplier[gstin].iamt,
-            camt: itcBySupplier[gstin].camt,
-            samt: itcBySupplier[gstin].samt,
-            totalItc: itcBySupplier[gstin].iamt + itcBySupplier[gstin].camt + itcBySupplier[gstin].samt,
-            isClaimed: true, // Default to claimed
+          gstin,
+          name: itcBySupplier[gstin].name,
+          iamt: itcBySupplier[gstin].iamt,
+          camt: itcBySupplier[gstin].camt,
+          samt: itcBySupplier[gstin].samt,
+          totalItc: itcBySupplier[gstin].iamt + itcBySupplier[gstin].camt + itcBySupplier[gstin].samt,
+          isClaimed: true,
         }));
 
         setSupplierItcData(processedList);
@@ -98,9 +90,8 @@ function Gstr3bFiling({ clientId, clientGstin }) {
       }
     };
     reader.readAsArrayBuffer(file);
-  };
+  }
 
-  // NEW: Function to toggle if ITC from a supplier is claimed
   const handleClaimToggle = (gstinToToggle) => {
     setSupplierItcData(prevData =>
       prevData.map(supplier =>
@@ -111,7 +102,6 @@ function Gstr3bFiling({ clientId, clientGstin }) {
     );
   };
 
-  // Function to process data and generate the GSTR-3B JSON
   const handleProcessData = async () => {
     setLoading(true);
     setProcessedJson(null);
@@ -140,7 +130,6 @@ function Gstr3bFiling({ clientId, clientGstin }) {
         else { totalCgst += totalTax / 2; totalSgst += totalTax / 2; }
     });
 
-    // Use the calculated ITC from the checked suppliers
     const claimedSuppliers = supplierItcData.filter(s => s.isClaimed);
     const itcNet = {
         iamt: claimedSuppliers.reduce((acc, s) => acc + s.iamt, 0),
@@ -182,7 +171,6 @@ function Gstr3bFiling({ clientId, clientGstin }) {
     <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-4xl">
       <h2 className="text-2xl font-bold mb-6 text-gray-800">GSTR-3B Preparation & Export</h2>
       
-      {/* Period Selection */}
       <div className="flex items-center space-x-4 mb-6 p-4 bg-gray-50 rounded-lg">
         <div className="flex-1">
           <label htmlFor="month-3b" className="block text-sm font-medium text-gray-700">Filing Month</label>
@@ -198,14 +186,12 @@ function Gstr3bFiling({ clientId, clientGstin }) {
         </div>
       </div>
 
-      {/* GSTR-2B Upload Section */}
       <div className="mb-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
         <h3 className="font-semibold text-yellow-800 mb-2">Step 1: Auto-fill ITC from GSTR-2B</h3>
         <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
         {uploadMessage && <p className={`mt-2 text-sm ${uploadMessage.includes('Error') ? 'text-red-600' : 'text-green-600'}`}>{uploadMessage}</p>}
       </div>
 
-      {/* NEW: Supplier-wise ITC Breakdown Table */}
       {supplierItcData.length > 0 && (
         <div className="mb-6">
             <h3 className="font-semibold text-gray-800 mb-2">GSTR-2B Supplier Breakdown</h3>
@@ -249,7 +235,6 @@ function Gstr3bFiling({ clientId, clientGstin }) {
         </button>
       </div>
 
-      {/* Processed Data Display */}
       {processedJson && (
         <div className="mt-8">
           <h3 className="text-xl font-semibold mb-4">GSTR-3B Summary for {processedJson.fp}</h3>
