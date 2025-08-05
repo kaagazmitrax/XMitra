@@ -1,3 +1,6 @@
+// Forcing a deployment refresh
+import React, { useState, useEffect } from 'react';
+// ... the rest of your App.js code
 // ========================================================================
 // FILE: src/App.js (Updated for Client Dashboard)
 // ========================================================================
